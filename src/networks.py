@@ -8,26 +8,57 @@ import random
 from scipy.linalg import expm
 
 
-def generate_coexpression_network(expr_mat: pd.DataFrame,
-                                  gene_mapping: pd.DataFrame,
-                                  sample_metadata: pd.DataFrame,
-                                  method: str = 'wgcna', **kwargs):
-    """
-    """
-    # create ann data object
-    adata = ad.AnnData(expr_mat)
-    adata.var = gene_mapping
-    adata.obs = sample_metadata
+# def generate_coexpression_network(expr_mat: pd.DataFrame,
+#                                   gene_mapping: pd.DataFrame,
+#                                   sample_metadata: pd.DataFrame,
+#                                   method: str = 'wgcna', **kwargs):
+#     """
+#     """
+#     # create ann data object
+#     adata = ad.AnnData(expr_mat)
+#     adata.var = gene_mapping
+#     adata.obs = sample_metadata
+#
+#     # create WGCNA object
+#     wgcna_obj = wgcna.WGCNA(anndata=adata, **kwargs)
+#     wgcna_obj.findModules()
+#     wgcna_obj.saveWGCNA()
+#
+#     if method == 'wgcna':
+#         network = networkx.Graph(wgcna_obj.adjacency)
+#
+#     return wgcna_obj, network
 
-    # create WGCNA object
-    wgcna_obj = wgcna.WGCNA(anndata=adata, **kwargs)
-    wgcna_obj.findModules()
-    wgcna_obj.saveWGCNA()
 
-    if method == 'wgcna':
-        network = networkx.Graph(wgcna_obj.adjacency)
+def generate_coexpression_network(matrix: pd.DataFrame,
+                                  power: int = 5,
+                                  cutoff: float = 0.8):
+    '''
+    Creates basic co-expression network. No soft-thresholding.
+    '''
 
-    return wgcna_obj, network
+    correlation_matrix = matrix.corr()
+    adjacency_matrix = np.abs(correlation_matrix) ** power
+
+    # remove self-correlation
+    np.fill_diagonal(adjacency_matrix.values, 0)
+
+    # Apply threshold to low correlation
+    adjacency_matrix[adjacency_matrix < cutoff] = 0
+
+    # Generate mapping dict for gene symbols
+    label_mapping = {i: symbol for i, symbol in enumerate(adjacency_matrix.columns)}
+
+    # Convert to weighted graph
+    coexpression_network = nx.from_numpy_matrix(adjacency_matrix.values)
+
+    # Map labels back go gene names
+    coexpression_network = nx.relabel_nodes(coexpression_network, label_mapping)
+
+    # Remove nodes without edges
+    coexpression_network.remove_nodes_from(list(nx.isolates(coexpression_network)))
+
+    return coexpression_network
 
 
 def get_edges_between_nodes(node_set, graph):
@@ -55,36 +86,64 @@ def get_edges_between_nodes(node_set, graph):
     return edges
 
 
-def random_subset(graph, p):
+# def random_subset(graph, p):
+#     """
+#     Returns a random subset of nodes and edges from a NetworkX graph object, while retaining the edge weights.
+#
+#     Parameters:
+#         graph (networkx.Graph): the input graph object
+#         p (float): the proportion of nodes and edges to retain (must be between 0 and 1)
+#
+#     Returns:
+#         random_graph (networkx.Graph): the random subset of nodes and edges
+#     """
+#     # Get a list of all the nodes in the graph
+#     nodes = list(graph.nodes())
+#
+#     # Compute the number of nodes to retain
+#     n_nodes = int(len(nodes) * p)
+#
+#     # Select a random subset of nodes to retain
+#     random_nodes = random.sample(nodes, n_nodes)
+#
+#     edges = get_edges_between_nodes(set(random_nodes), graph=graph)
+#
+#     # Create a new graph object containing only the selected nodes and edges
+#     random_graph = networkx.Graph()
+#     random_graph.add_nodes_from(random_nodes)
+#     random_graph.add_edges_from(edges)
+#
+#     # Return the random subset of nodes and edges
+#     return random_graph
+
+
+def random_subgraph(graph, fraction):
     """
-    Returns a random subset of nodes and edges from a NetworkX graph object, while retaining the edge weights.
+    Returns a random subset of nodes and edges from a NetworkX graph object, retaining all associated attributes.
 
     Parameters:
         graph (networkx.Graph): the input graph object
-        p (float): the proportion of nodes and edges to retain (must be between 0 and 1)
+        fraction (float): the proportion of nodes and edges to retain (must be between 0 and 1)
 
     Returns:
-        random_graph (networkx.Graph): the random subset of nodes and edges
+        subgraph (networkx.Graph): the random subgraph of nodes and edges
     """
-    # Get a list of all the nodes in the graph
-    nodes = list(graph.nodes())
+    # compute number of nodes for subgraph
+    num_nodes = int(fraction * len(graph.nodes()))
 
-    # Compute the number of nodes to retain
-    n_nodes = int(len(nodes) * p)
+    # randomly select num_node nodes
+    nodes = np.random.choice(list(graph.nodes()), size=num_nodes, replace=False)
 
-    # Select a random subset of nodes to retain
-    random_nodes = random.sample(nodes, n_nodes)
+    # create a subgraph from the selected nodes
+    subgraph = graph.subgraph(nodes)
 
-    edges = get_edges_between_nodes(set(random_nodes), graph=graph)
+    return subgraph
 
-    # Create a new graph object containing only the selected nodes and edges
-    random_graph = networkx.Graph()
-    random_graph.add_nodes_from(random_nodes)
-    random_graph.add_edges_from(edges)
 
-    # Return the random subset of nodes and edges
-    return random_graph
-
+# In networkx:
+# nx.clustering(coexpr_net, weight='weight')
+# nx.average_clustering(coexpr_net, weight='weight')
+# Change this function could be changed to just plot the distribution of the coefficients
 
 def compute_weighted_clustering_coefficient(graph):
     """
@@ -116,6 +175,7 @@ def compute_weighted_clustering_coefficient(graph):
     plt.show()
 
     # Compute the average clustering coefficient of the graph
+    #nx.average_clustering()
     avg_cc = sum(cc_dict.values()) / len(cc_dict)
 
     # Return the average clustering coefficient and the clustering coefficient dictionary
@@ -152,6 +212,7 @@ def plot_degree_distribution(graph, seeds: str = None):
     return node_degrees
 
 
+#nx.modularity_matrix(graph, weight='weight')
 def compute_modularity_matrix(graph):
     """
     Computes the modularity of a NetworkX weighted graph object.
@@ -170,7 +231,8 @@ def compute_modularity_matrix(graph):
     total_weight = np.sum(edge_weights)
 
     # Compute the expected weight matrix
-    expected_matrix = np.outer(np.sum(adj_matrix, axis=0), np.sum(adj_matrix, axis=1)) / total_weight
+    expected_matrix = np.outer(np.sum(adj_matrix, axis=0), np.sum(adj_matrix, axis=1)) / (2 * total_weight)
+    #expected_matrix = np.outer(np.sum(adj_matrix, axis=0), np.sum(adj_matrix, axis=1)) / total_weight
 
     # Compute the modularity matrix
     mod_matrix = adj_matrix - expected_matrix
@@ -217,6 +279,7 @@ def compute_centrality_metrics(graph):
     return centrality_df
 
 
+#https://netneurotools.readthedocs.io/en/latest/generated/netneurotools.metrics.communicability_wei.html
 def compute_weighted_communicability(graph):
     """
     Computes the communicability of pairs of nodes in `adjacency`
@@ -237,7 +300,7 @@ def compute_weighted_communicability(graph):
     6(33), 411-414.
 
     """
-
+    # USE nx.to_numpy_array()
     adjacency = networkx.adjacency_matrix(graph).toarray()
 
     # negative square root of nodal degrees
