@@ -31,20 +31,42 @@ from scipy.linalg import expm
 
 
 def generate_coexpression_network(matrix: pd.DataFrame,
-                                  power: int = 5,
-                                  cutoff: float = 0.8):
+                                  directionality: bool = True,
+                                  power: int = 1,
+                                  cutoff: float = 0.5):
     '''
-    Creates basic co-expression network. No soft-thresholding.
-    '''
+    Creates a co-expression network
 
+    Args:
+        matrix (pd.DataFrame):
+        directionality (bool):
+        power (int):
+        cutoff (float):
+    '''
+    # compute correlation coefficients
     correlation_matrix = matrix.corr()
-    adjacency_matrix = np.abs(correlation_matrix) ** power
+
+    # if user wants to encode directionality
+    if directionality:
+        # apply correlation cutoff
+        correlation_matrix[(correlation_matrix < cutoff) & (correlation_matrix > (cutoff * -1))] = 0
+
+        # normalise to be between 0 and 1 so that correlation of 0 is 0.5
+        adjacency_matrix = (correlation_matrix + 1) / 2
+
+    else:
+        # convert correlation values to absolute values
+        adjacency_matrix = np.abs(correlation_matrix)
+
+        # Apply threshold to low correlation
+        adjacency_matrix[adjacency_matrix < cutoff] = 0
+
+    
+    # apply a power, default is 1 such that no additional transformation is applied
+    adjacency_matrix = adjacency_matrix ** power
 
     # remove self-correlation
     np.fill_diagonal(adjacency_matrix.values, 0)
-
-    # Apply threshold to low correlation
-    adjacency_matrix[adjacency_matrix < cutoff] = 0
 
     # Generate mapping dict for gene symbols
     label_mapping = {i: symbol for i, symbol in enumerate(adjacency_matrix.columns)}

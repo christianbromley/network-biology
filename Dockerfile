@@ -12,5 +12,8 @@ RUN pip install --upgrade pip
 RUN pip install --no-cache-dir setuptools wheel
 RUN pip install --no-cache-dir -r requirements.txt
 
+# Copy the rest of the application code into the container
+COPY . .
+
 # Set the entry point for the container
 ENTRYPOINT ["python", "/app/src/networks.py"]
