@@ -1,9 +1,13 @@
-import anndata as ad
+#import anndata as ad
 import matplotlib.pyplot as plt
-import networkx
+import networkx as nx
 import numpy as np
 import pandas as pd
-import PyWGCNA as wgcna
+#import PyWGCNA as wgcna
+import sys
+
+sys.path.insert(0, "./opt/anaconda3/lib/python3.8/site-packages")
+
 import random
 from scipy.linalg import expm
 
@@ -30,8 +34,9 @@ from scipy.linalg import expm
 #     return wgcna_obj, network
 
 
-def generate_coexpression_network(matrix: pd.DataFrame,
+def weighted_coexpression_network(matrix: pd.DataFrame,
                                   directionality: bool = True,
+                                  directionality_method: str = "positive_only",
                                   power: int = 1,
                                   cutoff: float = 0.5):
     '''
@@ -39,21 +44,40 @@ def generate_coexpression_network(matrix: pd.DataFrame,
 
     Args:
         matrix (pd.DataFrame):
-        directionality (bool):
+        directionality (bool): defaults to True
+        directionality_method (str): defaults to "positive_only" where only positive correlations used. 
+        "positive_norm" mean values are scaled between 0 and 1. "positive_negative" means negative correlations are also encoded.
+        
         power (int):
         cutoff (float):
     '''
     # compute correlation coefficients
     correlation_matrix = matrix.corr()
 
+    # a few different options:
+    # if we want to encode directionality somehow
+    # we can 
+    # 1) just use positive correlations 
+    # 2) normalise between 0 and 1
+    # 3) use positive and negative values
+
     # if user wants to encode directionality
     if directionality:
-        # apply correlation cutoff
-        correlation_matrix[(correlation_matrix < cutoff) & (correlation_matrix > (cutoff * -1))] = 0
+        if directionality_method == "positive_only":
+            # apply correlation coefficient cutoff
+            correlation_matrix[correlation_matrix < cutoff] = 0
+            adjacency_matrix = correlation_matrix.copy()
+        else:
+            # apply correlation coefficient cutoff
+            correlation_matrix[(correlation_matrix < cutoff) & (correlation_matrix > (cutoff * -1))] = 0
 
-        # normalise to be between 0 and 1 so that correlation of 0 is 0.5
-        adjacency_matrix = (correlation_matrix + 1) / 2
-
+            if directionality_method == "positive_norm":
+                # normalise to be between 0 and 1 so that correlation of 0 is 0.5
+                adjacency_matrix = (correlation_matrix + 1) / 2
+            elif directionality_method == "positive_negative":
+                adjacency_matrix = correlation_matrix.copy()
+            else:
+                raise ValueError("directionality_method is not one of positive_only, positive_norm or positive_negative")
     else:
         # convert correlation values to absolute values
         adjacency_matrix = np.abs(correlation_matrix)
@@ -68,11 +92,13 @@ def generate_coexpression_network(matrix: pd.DataFrame,
     # remove self-correlation
     np.fill_diagonal(adjacency_matrix.values, 0)
 
+    print(adjacency_matrix)
+
     # Generate mapping dict for gene symbols
     label_mapping = {i: symbol for i, symbol in enumerate(adjacency_matrix.columns)}
 
     # Convert to weighted graph
-    coexpression_network = nx.from_numpy_matrix(adjacency_matrix.values)
+    coexpression_network = nx.from_numpy_array(adjacency_matrix.values)
 
     # Map labels back go gene names
     coexpression_network = nx.relabel_nodes(coexpression_network, label_mapping)
