@@ -43,13 +43,17 @@ def weighted_coexpression_network(matrix: pd.DataFrame,
     Creates a co-expression network
 
     Args:
-        matrix (pd.DataFrame):
+        matrix (pd.DataFrame): matrix of numeric values to co-correlate
         directionality (bool): defaults to True
         directionality_method (str): defaults to "positive_only" where only positive correlations used. 
         "positive_norm" mean values are scaled between 0 and 1. "positive_negative" means negative correlations are also encoded.
         
         power (int):
         cutoff (float):
+    
+    Returns:
+        coexpression_network (networkx.Graph): networkx graph of the coexpression network
+
     '''
     # compute correlation coefficients
     correlation_matrix = matrix.corr()
@@ -113,7 +117,7 @@ def get_edges_between_nodes(node_set, graph):
     """
     Returns a list of all the edges between a set of nodes in a NetworkX graph object.
 
-    Parameters:
+    Args:
         node_set (set): the set of nodes to find edges between
         graph (networkx.Graph): the input graph object
 
@@ -134,42 +138,11 @@ def get_edges_between_nodes(node_set, graph):
     return edges
 
 
-# def random_subset(graph, p):
-#     """
-#     Returns a random subset of nodes and edges from a NetworkX graph object, while retaining the edge weights.
-#
-#     Parameters:
-#         graph (networkx.Graph): the input graph object
-#         p (float): the proportion of nodes and edges to retain (must be between 0 and 1)
-#
-#     Returns:
-#         random_graph (networkx.Graph): the random subset of nodes and edges
-#     """
-#     # Get a list of all the nodes in the graph
-#     nodes = list(graph.nodes())
-#
-#     # Compute the number of nodes to retain
-#     n_nodes = int(len(nodes) * p)
-#
-#     # Select a random subset of nodes to retain
-#     random_nodes = random.sample(nodes, n_nodes)
-#
-#     edges = get_edges_between_nodes(set(random_nodes), graph=graph)
-#
-#     # Create a new graph object containing only the selected nodes and edges
-#     random_graph = networkx.Graph()
-#     random_graph.add_nodes_from(random_nodes)
-#     random_graph.add_edges_from(edges)
-#
-#     # Return the random subset of nodes and edges
-#     return random_graph
-
-
 def random_subgraph(graph, fraction):
     """
     Returns a random subset of nodes and edges from a NetworkX graph object, retaining all associated attributes.
 
-    Parameters:
+    Args:
         graph (networkx.Graph): the input graph object
         fraction (float): the proportion of nodes and edges to retain (must be between 0 and 1)
 
@@ -198,7 +171,7 @@ def compute_weighted_clustering_coefficient(graph):
     Computes the clustering coefficient for each node in a NetworkX weighted graph object, as well as the
     average clustering coefficient.
 
-    Parameters:
+    Args:
         graph (networkx.Graph): the input graph object
 
     Returns:
@@ -206,7 +179,7 @@ def compute_weighted_clustering_coefficient(graph):
         cc_dict (dict): a dictionary containing the clustering coefficient for each node in the graph
     """
     # Compute the clustering coefficient for each node
-    cc_dict = networkx.clustering(graph, weight='weight')
+    cc_dict = nx.clustering(graph, weight='weight')
 
     # get this in data frame format
     # cc_df = pd.DataFrame(cc_dict, index=cc_dict.keys()).unstack()
@@ -215,8 +188,6 @@ def compute_weighted_clustering_coefficient(graph):
 
     # Plot the degree distribution
     plt.hist(cc_df.clustering_coefficient.tolist(), bins=20)
-    # plt.xscale('log')
-    # plt.yscale('log')
     plt.xlabel('Clustering coefficient per node')
     plt.ylabel('Count')
     plt.title('Clustering coefficient')
@@ -224,19 +195,22 @@ def compute_weighted_clustering_coefficient(graph):
 
     # Compute the average clustering coefficient of the graph
     #nx.average_clustering()
-    avg_cc = sum(cc_dict.values()) / len(cc_dict)
+    avg_cc = nx.average_clustering(graph, weight='weight')
 
     # Return the average clustering coefficient and the clustering coefficient dictionary
     return avg_cc, cc_df
 
 
-def plot_degree_distribution(graph, seeds: str = None):
+def plot_degree_distribution(graph, seeds: str = None, **kwargs):
     """
     Plots the degree distribution for a NetworkX graph object.
 
-    Parameters:
+    Args:
         graph (networkx.Graph): the input graph object
-        seeds (list): list of ensembl IDs as seeds
+        seeds (list): list of node IDs or seeds
+    
+    Returns:
+        node_degrees (pd.DataFrame): data frame with weighted degree of nodes
     """
     # Compute the degree of each node in the graph
     degrees = [graph.degree(node, weight='weight') for node in graph.nodes()]
@@ -245,13 +219,9 @@ def plot_degree_distribution(graph, seeds: str = None):
         'node': nodes,
         'weighted_degree': degrees
     })
-    if seeds is not None:
-        node_degrees['geneset'] = np.where(node_degrees['node'].isin(seeds), 'seeds', 'other')
 
     # Plot the degree distribution
-    plt.hist(node_degrees.weighted_degree.tolist(), bins=10)
-    # plt.xscale('log')
-    # plt.yscale('log')
+    plt.hist(node_degrees.weighted_degree.tolist(), bins=10, **kwargs)
     plt.xlabel('Degree (weighted)')
     plt.ylabel('Count')
     plt.title('Degree Distribution')
@@ -265,14 +235,14 @@ def compute_modularity_matrix(graph):
     """
     Computes the modularity of a NetworkX weighted graph object.
 
-    Parameters:
+    Args:
         graph (networkx.Graph): the input graph object
 
     Returns:
         modularity (float): the modularity of the graph
     """
     # Get the adjacency matrix and edge weights
-    adj_matrix = networkx.adjacency_matrix(graph).toarray()
+    adj_matrix = nx.adjacency_matrix(graph).toarray()
     edge_weights = np.array([d['weight'] for (u, v, d) in graph.edges(data=True)])
 
     # Compute the total weight of the graph
@@ -280,7 +250,6 @@ def compute_modularity_matrix(graph):
 
     # Compute the expected weight matrix
     expected_matrix = np.outer(np.sum(adj_matrix, axis=0), np.sum(adj_matrix, axis=1)) / (2 * total_weight)
-    #expected_matrix = np.outer(np.sum(adj_matrix, axis=0), np.sum(adj_matrix, axis=1)) / total_weight
 
     # Compute the modularity matrix
     mod_matrix = adj_matrix - expected_matrix
@@ -300,16 +269,16 @@ def compute_centrality_metrics(graph):
         centrality_df (pandas.DataFrame): a DataFrame containing the centrality metrics for each node
     """
     # Compute the degree centrality
-    degree_centrality = networkx.degree_centrality(graph)
+    degree_centrality = nx.degree_centrality(graph)
 
     # Compute the eigenvector centrality
-    eigenvector_centrality = networkx.eigenvector_centrality(graph, weight='weight')
+    eigenvector_centrality = nx.eigenvector_centrality(graph, weight='weight')
 
     # Compute the closeness centrality
-    closeness_centrality = networkx.closeness_centrality(graph, distance='weight')
+    closeness_centrality = nx.closeness_centrality(graph, distance='weight')
 
     # Compute the betweenness centrality
-    betweenness_centrality = networkx.betweenness_centrality(graph, weight='weight')
+    betweenness_centrality = nx.betweenness_centrality(graph, weight='weight')
 
     # Create a DataFrame to store the results
     centrality_df = pd.DataFrame({
@@ -332,24 +301,21 @@ def compute_weighted_communicability(graph):
     """
     Computes the communicability of pairs of nodes in `adjacency`
 
-    Parameters
-    ----------
-    graph (networkx graph): a graph with weighted edges
+    Args:
+        graph (networkx graph): a graph with weighted edges
 
-    Returns
-    -------
-    cmc : (N, N) numpy.ndarray
-        Symmetric array representing communicability of nodes {i, j}
+    Returns:
+        cmc : (N, N) numpy.ndarray
+            Symmetric array representing communicability of nodes {i, j}
 
-    References
-    ----------
-    Crofts, J. J., & Higham, D. J. (2009). A weighted communicability measure
-    applied to complex brain networks. Journal of the Royal Society Interface,
-    6(33), 411-414.
+    References:
+        Crofts, J. J., & Higham, D. J. (2009). A weighted communicability measure
+        applied to complex brain networks. Journal of the Royal Society Interface,
+        6(33), 411-414.
 
     """
     # USE nx.to_numpy_array()
-    adjacency = networkx.adjacency_matrix(graph).toarray()
+    adjacency = nx.to_numpy_array(graph)
 
     # negative square root of nodal degrees
     row_sum = adjacency.sum(1)
@@ -366,13 +332,20 @@ def compute_weighted_communicability(graph):
     return pd.DataFrame(cmc, index=graph.nodes, columns=graph.nodes)
 
 
-def compute_mean_weighted_communicability(comms_matrix, starting_nodes, ending_nodes):
+def mean_weighted_communicability_between_nodesets(comms_matrix: pd.DataFrame, starting_nodes: list, ending_nodes: list):
     """
+    Compute the mean communicability between two sets of nodes
+
+    Args:
+        comms_matrix (pd.DataFrame): matrix with weighted communicability matrix e.g. output from compute_weighted_communicability
+        starting_nodes (list): names of the nodes to start at
+        ending_nodes (list): names of the nodes to assess communication with
 
     """
     assert len(set(starting_nodes) & set(
         ending_nodes)) == 0, 'There must be no overlaps between your starting and ending nodes'
 
+    # ensure we are using nodes that are actually in the communicability matrix
     starting_nodes = list(set(starting_nodes) & set(comms_matrix.index))
     ending_nodes = list(set(ending_nodes) & set(comms_matrix.index))
 
@@ -389,7 +362,7 @@ def compute_mean_weighted_communicability(comms_matrix, starting_nodes, ending_n
 
 def ablate_and_communicate(graph, **kwargs):
     """
-    Ablate each node and then assess communicability
+    Ablate each node and then assess communicability between two sets of nodes
 
     Parameters:
         graph: networkx object
