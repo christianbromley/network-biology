@@ -96,7 +96,7 @@ def weighted_coexpression_network(matrix: pd.DataFrame,
     # remove self-correlation
     np.fill_diagonal(adjacency_matrix.values, 0)
 
-    print(adjacency_matrix)
+    #print(adjacency_matrix)
 
     # Generate mapping dict for gene symbols
     label_mapping = {i: symbol for i, symbol in enumerate(adjacency_matrix.columns)}
@@ -201,7 +201,7 @@ def compute_weighted_clustering_coefficient(graph):
     return avg_cc, cc_df
 
 
-def plot_degree_distribution(graph, seeds: str = None, **kwargs):
+def plot_degree_distribution(graph, **kwargs):
     """
     Plots the degree distribution for a NetworkX graph object.
 
